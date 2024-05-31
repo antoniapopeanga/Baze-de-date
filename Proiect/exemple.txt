@@ -1,0 +1,139 @@
+--12
+--1. Selectati numele, prenumele, id-ul,data angajarii  si job-ul angajatilor care sunt responsabili de expozitiile temporare si sa ii ordonati in functie de data la care au fost angajati.
+--functie siruri caractere lower,ordonare date
+select a.id_angajat,a.nume_angajat,a.prenume_angajat,a.data_angajare,j.titlu_job
+from angajat a
+join expozitie e on a.id_expozitie=e.id_expozitie
+join job j on a.id_job=j.id_job
+where e.id_tip_expozitie in (select id_tip_expozitie
+                             from tip_expozitie 
+                              where lower(tip_expozitie)='expozitie temporara')
+order by a.data_angajare;
+
+--2. Sa se afiseze numele si prenumele vizitatorului care a cumparat numarul cel mai mare de bilete in anul 2023.
+--bloc with, grupare de date,functie data extract,functii agregate count, max
+with temp as( select v.id_vizitator, count(b.id_bilet) as nr_bilete
+                             from vizitator v
+                              join bilete b on v.id_vizitator=b.id_vizitator
+                               where extract(year from b.data_achizitie)=2023
+                               group by v.id_vizitator
+                               )
+select v.prenume_vizitator, v.nume_vizitator, temp.nr_bilete
+from vizitator v
+join temp on v.id_vizitator=temp.id_vizitator
+where temp.nr_bilete in (select max(t.nr_bilete)
+                          from temp t
+                           )
+group by v.prenume_vizitator, v.nume_vizitator,temp.nr_bilete;
+
+--3. Pentru toate exponatele care au fost achiziitonate dupa anul 2007 sa se afiseze denumirea, artistul si curentul din care face parte, daca lipseste artistul sa se afiseze 'artist necunoscut' sau daca lipseste perioada sa se afiseze 'perioada necunoscuta'.
+--bloc case, functie pentru data
+select 
+    e.denumire as exponat,
+    case
+        when a.nume_artist is null then 'artist necunoscut'
+        else a.nume_artist || ' ' || a.prenume_artist
+    end as artist,
+    case
+        when e.perioada is null then 'perioada necunoscuta'
+        else e.perioada
+    end as perioada
+from 
+    exponat e
+left join 
+    artist a on e.id_artist = a.id_artist
+where to_char(e.data_achizitie, 'YYYY') > '2007';
+
+--4. Afisati media preturilor biletelor pentru expozitii care nu depaseste 25 de lei si numele administratorului ei,daca nu are administrator '-',iar in cazul in care media nu exista se va afisa 0.
+--Pentru expozitiile temporare se va afisa si descrierea iar pentru permanente 'Expozitie permanenta', rezultatele vor fi ordonate dupa media preturilor descrescator.
+--subcere sincronizata in care intervin 3 tabele: angat, bilete,expozitie,grupare de date, filtrare de date, ordonare de date, functie siruri upper
+select expozitie, avg(pret) as medie_pret, descriere,id_administrator
+from (select e.nume_expozitie as expozitie,nvl(b.pret_bilet,0) as pret,decode(e.id_tip_expozitie,1,e.descriere,2,'Expozitie permanenta') as descriere,a.id_angajat as id_administrator
+    from expozitie e
+    full outer join bilete b on e.id_expozitie=b.id_expozitie
+    full outer join angajat a on e.id_expozitie=a.id_expozitie
+    where a.id_angajat in(select a1.id_angajat
+                         from angajat a1
+                         join job j on a1.id_job=j.id_job
+                         where upper(j.titlu_job)='ADMINISTRATOR') or a.id_angajat is NULL
+    )
+group by expozitie,descriere,id_administrator
+having avg(pret)<25
+order by medie_pret desc;
+
+--5. Sa se afiseze evenimentele cu cel putin 2 expozitii incluse.
+--subcerere nesincronizata in clauza FOR
+select e.nume_eveniment as eveniment, subquery.nr_expozitii
+from evenimente e
+join (
+select id_eveniment, count(id_expozitie) as nr_expozitii
+from expozitii_evenimente
+group by id_eveniment
+having count(id_expozitie)>2
+) subquery
+on e.id_eveniment = subquery.id_eveniment;
+
+--13
+--1. Actualizarea descrierii expoziției egiptene.
+update expozitie
+set descriere = 'aceasta este o expozitie permanenta cu artefacte din perioada egiptului antic. actualizat.'
+where id_expozitie = (
+select id_expozitie
+from expozitie
+where nume_expozitie = 'expozitie egipteana'
+);
+select * from expozitie;
+
+--2. Ștergerea înregistrării artiștilor români din tabelul ARTIST.
+delete from artist
+where id_artist in (
+select id_artist
+from artist
+where nationalitate = 'roman'
+);
+select * from artist;
+
+--3. Modificarea datei de angajare, adăugând 2 luni angajatului angajat intre 2005 si 2015(data maximă din acest interval)
+update angajat
+set data_angajare = (
+select add_months(max(data_angajare), 2)
+from angajat
+where data_angajare between to_date('01-01-2005', 'dd-mm-yyyy') and to_date('31-12-2015', 'dd-mm-yyyy')
+)
+where data_angajare between to_date('01-01-2005', 'dd-mm-yyyy') and to_date('31-12-2015', 'dd-mm-yyyy');
+select * from angajat;
+--15
+--1.Afisati o listă a tuturor exponatelor, categoria acestora, împreună cu numele expoziției, tipul de expoziție si id ul artistului chiar dacă unele valori sunt nule, ordonați-le alfabetic in functie de denumirea expozițiilor.
+--operația outer-join pe minimum 4 tabele
+SELECT NUME_EXPOZITIE,ID_ARTIST,DENUMIRE,TIP_EXPONAT,TIP_EXPOZITIE
+FROM EXPOZITIE
+LEFT OUTER JOIN TIP_EXPOZITIE ON EXPOZITIE.ID_TIP_EXPOZITIE = TIP_EXPOZITIE.ID_TIP_EXPOZITIE
+LEFT OUTER JOIN EXPONAT ON EXPOZITIE.ID_EXPOZITIE = EXPONAT.ID_EXPOZITIE
+LEFT OUTER JOIN CATEGORIE_EXPONAT ON EXPONAT.ID_CATEGORIE = CATEGORIE_EXPONAT.ID_CATEGORIE
+ORDER BY NUME_EXPOZITIE;
+--2.Selectați toate evenimentele care conțin toate expozițiile(pentru acest exemplu am mai inserat date in tabela EXPOZITII_EVENIMENTE).
+INSERT INTO Expozitii_Evenimente (ID_EXPOZITIE, ID_EVENIMENT)
+VALUES (2, 3);
+INSERT INTO Expozitii_Evenimente (ID_EXPOZITIE, ID_EVENIMENT)
+VALUES (4, 3);
+--operația division
+SELECT E.ID_EVENIMENT, E.NUME_EVENIMENT, E.DESCRIERE, E.DATA_INCEPUT, E.DATA_SFARSIT
+FROM Evenimente E
+WHERE NOT EXISTS (
+  SELECT ID_EXPOZITIE
+  FROM EXPOZITIE
+  WHERE ID_EXPOZITIE NOT IN (
+    SELECT ID_EXPOZITIE
+    FROM Expozitii_Evenimente
+    WHERE ID_EVENIMENT = E.ID_EVENIMENT
+  ));
+
+--3.Afișați cei mai bine platiți 5 angajați.
+--cerere care implementează analiza top-n
+SELECT ID_ANGAJAT, NUME_ANGAJAT, PRENUME_ANGAJAT, Salariu
+FROM (
+  SELECT ID_ANGAJAT, NUME_ANGAJAT, PRENUME_ANGAJAT, Salariu
+  FROM Angajat
+  ORDER BY Salariu DESC
+) WHERE ROWNUM <= 5;
+
